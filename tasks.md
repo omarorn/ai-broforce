@@ -11,6 +11,12 @@ This document lists the major features and milestones that have been implemented
 - ✅ Integrated sound effects and music via the Web Audio API.
 - ✅ Fixed critical bug causing immediate "Game Over" on game start.
 - ✅ Added a "God Mode" for easier development and testing.
+- ✅ Implemented advanced movement abilities: `Grappling Hook`, `Flight`, and `Glide`.
+- ✅ Implemented core movement abilities: `Double Jump`, `Air Dash`, `Wall Slide`, and `Dig`.
+- ✅ Added distinct sound effects for core movement abilities and other game events (explosions, shooting).
+- ✅ Added more visual feedback for active special abilities (e.g., a glow for flight, wind lines for glide).
+- ✅ Fixed game freeze and annoying sound loop on startup.
+- ✅ Fixed floating menu, no menu available or settings.
 
 ## AI Character Generation
 - ✅ Integrated Gemini AI to generate heroes and villains from a user-provided theme.

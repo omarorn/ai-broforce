@@ -2,6 +2,16 @@
 
 A log of significant changes and feature implementations made to the "AI Broforce: Recharged" application.
 
+### **Session 11: Bug Resolution & Core Gameplay Refinements**
+- **Date:** 2024-05-25
+- **Files Modified:** `todo.md`, `gemini_code_log.md`, `tasks.md`, `components/GameScreen.tsx`, `services/audioService.ts`
+- **Summary:** Addressed and resolved all identified bugs from the `todo.md` list.
+  - Implemented and refined advanced movement abilities: `Grappling Hook`, `Flight`, and `Glide`.
+  - Ensured proper implementation of core movement abilities: `Double Jump`, `Air Dash`, `Wall Slide`, and `Dig`.
+  - Added distinct sound effects for core movement abilities, explosions, and shooting.
+  - Enhanced visual feedback for active special abilities (e.g., glow for flight, wind lines for glide).
+  - Verified and confirmed fixes for game freeze/sound loop and floating menu issues (as per `todo.md` completion).
+
 ### **Session 10: Interactive 3D Character Viewer**
 - **Date:** 2024-05-25
 - **Files Modified:** `components/CharacterProfileScreen.tsx`, `tasks.md`, `gemini_code_log.md`
