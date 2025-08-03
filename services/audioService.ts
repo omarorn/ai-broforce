@@ -205,6 +205,3 @@ if (typeof window !== 'undefined') {
   document.addEventListener('click', prewarmAudio);
   document.addEventListener('keydown', prewarmAudio);
 }
-
-
-export const audioService = new AudioService();
