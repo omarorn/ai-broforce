@@ -11,6 +11,7 @@ const ProgressBar: React.FC<ProgressBarProps> = ({ progress, className }) => {
   return (
     <div className={`w-full bg-gray-700 h-4 border-2 border-gray-600 ${className}`}>
       <div
+        role="progressbar"
         className="bg-yellow-400 h-full transition-all duration-500 ease-out"
         style={{ width: `${clampedProgress}%` }}
       ></div>
