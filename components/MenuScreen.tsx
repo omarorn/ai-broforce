@@ -7,13 +7,15 @@ import Button from './ui/Button';
 import Input from './ui/Input';
 import Loader from './ui/Loader';
 import CharacterProfileScreen from './CharacterProfileScreen';
+import HowToPlayScreen from './HowToPlayScreen';
 import { IoVolumeHighOutline, IoVolumeMuteOutline, IoExpandOutline, IoContractOutline } from 'react-icons/io5';
 
 interface MenuScreenProps {
   onStartGame: (characters: GeneratedCharacters, startingHero: CharacterProfile) => void;
+  onShowHighScores: () => void;
 }
 
-type View = 'generate' | 'casting' | 'review' | 'portraits' | 'briefing' | 'casting_couch' | 'edit_character';
+type View = 'generate' | 'casting' | 'review' | 'portraits' | 'briefing' | 'casting_couch' | 'edit_character' | 'how_to_play';
 
 const themeSuggestions = [
   'famous action movie',
@@ -125,7 +127,7 @@ const CharacterCard: React.FC<{
   )
 };
 
-const MenuScreen: React.FC<MenuScreenProps> = ({ onStartGame }) => {
+const MenuScreen: React.FC<MenuScreenProps> = ({ onStartGame, onShowHighScores }) => {
   const [view, setView] = useState<View>('generate');
   const [characters, setCharacters] = useState<GeneratedCharacters | null>(null);
   const [editingCharacter, setEditingCharacter] = useState<CharacterProfile | null>(null);
@@ -431,6 +433,8 @@ const MenuScreen: React.FC<MenuScreenProps> = ({ onStartGame }) => {
             );
 
         case 'generate':
+        case 'how_to_play':
+            return <HowToPlayScreen onBack={() => setView('generate')} />;
         default:
           return (
             <div className="min-h-screen bg-gray-900 flex flex-col items-center justify-center p-4 relative z-10">
@@ -465,6 +469,14 @@ const MenuScreen: React.FC<MenuScreenProps> = ({ onStartGame }) => {
                   <Button onClick={handleGenerateCharacters} disabled={!theme.trim() || !characterCount} className="!bg-green-600 hover:!bg-green-700 text-xl px-8 py-4">
                     Generate Cast
                   </Button>
+                  <div className="mt-6 flex gap-4 justify-center">
+                    <Button onClick={onShowHighScores} className="!bg-yellow-600 hover:!bg-yellow-700">
+                        High Scores
+                    </Button>
+                    <Button onClick={() => setView('how_to_play')} className="!bg-blue-600 hover:!bg-blue-700">
+                        How to Play
+                    </Button>
+                  </div>
                   {(savedCasts.length > 0 || individualCharacters.length > 0) && (
                      <div className="mt-6">
                         <Button onClick={() => setView('casting_couch')} className="!bg-purple-600 hover:!bg-purple-700">

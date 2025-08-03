@@ -2,6 +2,7 @@ export enum GameState {
   MENU,
   PLAYING,
   GAME_OVER,
+  HIGH_SCORES,
 }
 
 export interface CharacterProfile {
@@ -13,6 +14,7 @@ export interface CharacterProfile {
   movementAbility: string;
   catchphrase: string;
   imageUrl?: string;
+  thumbnailUrl?: string;
 }
 
 export interface GeneratedCharacters {
@@ -33,7 +35,11 @@ export interface GameObject {
   y: number;
   width: number;
   height: number;
-  type: 'player' | 'enemy' | 'bullet' | 'crate' | 'explosion' | 'rescue_cage' | 'turret';
+  type: 'player' | 'enemy' | 'bullet' | 'crate' | 'explosion' | 'rescue_cage' | 'turret' | 'spike_pit';
+}
+
+export interface SpikePit extends GameObject {
+    type: 'spike_pit';
 }
 
 export interface Player extends GameObject {
@@ -74,6 +80,8 @@ export interface Enemy extends GameObject {
   isBoss: boolean;
   damageFlash: number;
   behavior: 'fly' | 'charge' | 'shoot';
+  attackPattern?: 'spread' | 'beam' | 'hail';
+  attackPatternCooldown?: number;
 }
 
 export interface Bullet extends GameObject {
@@ -106,12 +114,13 @@ export interface Turret extends GameObject {
     direction: 'left' | 'right';
 }
 
-export type GameEntityType = Player | Enemy | Bullet | Crate | Explosion | RescueCage | Turret;
+export type GameEntityType = Player | Enemy | Bullet | Crate | Explosion | RescueCage | Turret | SpikePit;
 
 export interface LevelData {
     platforms: Array<Omit<Crate, 'id' | 'type' | 'health'>>;
     destructibleCrates: Array<Omit<Crate, 'id' | 'type' | 'health'>>;
     enemies: Array<Omit<Enemy, 'id'| 'type' | 'villain' | 'health' | 'maxHealth' | 'damageFlash'>>;
     cages: Array<Omit<RescueCage, 'id'|'type'|'health'>>;
+    spikePits?: Array<Omit<SpikePit, 'id'|'type'>>;
     boss?: Omit<Enemy, 'id'| 'type' | 'villain' | 'health'| 'maxHealth' | 'damageFlash'>;
 }

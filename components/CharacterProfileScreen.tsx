@@ -83,6 +83,7 @@ const CharacterProfileScreen: React.FC<CharacterProfileScreenProps> = ({ charact
   const [error, setError] = useState<string | null>(null);
   const [internalCharacter, setInternalCharacter] = useState<CharacterProfile>(character);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [backgroundUrl, setBackgroundUrl] = useState<string | null>(null);
 
   const handleGenerateImage = async () => {
     setIsGenerating(true);
@@ -99,13 +100,44 @@ const CharacterProfileScreen: React.FC<CharacterProfileScreenProps> = ({ charact
       setIsGenerating(false);
     }
   };
+
+  const handleGenerateThumbnail = async () => {
+    setIsGenerating(true);
+    setError(null);
+    try {
+      const thumbnailUrl = await generateCharacterImage({ ...internalCharacter, name: `${internalCharacter.name} 2D thumbnail` });
+      const updatedCharacter = { ...internalCharacter, thumbnailUrl };
+      setInternalCharacter(updatedCharacter);
+      setHasUnsavedChanges(true);
+    } catch (e) {
+      console.error(e);
+      setError('Failed to generate thumbnail. The content may have been blocked or an API error occurred. Please try again.');
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const handleGenerateBackground = async () => {
+    setIsGenerating(true);
+    setError(null);
+    try {
+      const backgroundPrompt = `An arsenal background for the character ${internalCharacter.name}. The background should include the following stats: Weapon: ${internalCharacter.weaponType}, Movement: ${internalCharacter.movementAbility}, Special: ${internalCharacter.specialAbility}.`;
+      const backgroundUrl = await generateCharacterImage({ ...internalCharacter, description: backgroundPrompt });
+      setBackgroundUrl(backgroundUrl);
+    } catch (e) {
+      console.error(e);
+      setError('Failed to generate background. The content may have been blocked or an API error occurred. Please try again.');
+    } finally {
+      setIsGenerating(false);
+    }
+  };
   
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     setInternalCharacter(prev => ({ ...prev!, [name]: value }));
     setHasUnsavedChanges(true);
   };
-
+  
   const handleSave = () => {
     onSave(internalCharacter);
     setHasUnsavedChanges(false);
@@ -119,14 +151,19 @@ const CharacterProfileScreen: React.FC<CharacterProfileScreenProps> = ({ charact
   };
 
   return (
-    <div className="w-full max-w-2xl mx-auto text-center">
+    <div className="w-full max-w-2xl mx-auto text-center" style={{backgroundImage: `url(${backgroundUrl})`, backgroundSize: 'cover', backgroundPosition: 'center'}}>
       <div className="bg-gray-800/50 p-6 md:p-8 border-4 border-gray-700">
         
-        <InteractiveCharacterViewer 
-            imageUrl={internalCharacter.imageUrl || null}
-            altText={internalCharacter.name}
-            isGenerating={isGenerating}
-        />
+        <div className="flex justify-center items-center gap-4">
+            <InteractiveCharacterViewer 
+                imageUrl={internalCharacter.imageUrl || null}
+                altText={internalCharacter.name}
+                isGenerating={isGenerating}
+            />
+            {internalCharacter.thumbnailUrl && (
+                <img src={internalCharacter.thumbnailUrl} alt={`${internalCharacter.name} thumbnail`} className="w-32 h-32 object-contain border-4 border-gray-600" />
+            )}
+        </div>
 
         <div className="bg-gray-900/50 p-4 space-y-4 text-left">
             <div>
@@ -176,6 +213,12 @@ const CharacterProfileScreen: React.FC<CharacterProfileScreenProps> = ({ charact
             <Button onClick={onBack}>Back</Button>
             <Button onClick={handleGenerateImage} disabled={isGenerating}>
                 {isGenerating ? 'Generating...' : 'Generate Portrait'}
+            </Button>
+            <Button onClick={handleGenerateThumbnail} disabled={isGenerating}>
+                {isGenerating ? 'Generating...' : 'Generate Thumbnail'}
+            </Button>
+            <Button onClick={handleGenerateBackground} disabled={isGenerating}>
+                {isGenerating ? 'Generating...' : 'Generate Background'}
             </Button>
             <Button onClick={handleSave} disabled={isGenerating || !hasUnsavedChanges}>
                 Save

@@ -1,11 +1,12 @@
 import React, { useState, useCallback, useMemo } from 'react';
 import MenuScreen from './components/MenuScreen';
 import GameScreen from './components/GameScreen';
+import HighScoresScreen from './components/HighScoresScreen';
 import { GameState } from './types';
 import type { GeneratedCharacters, CharacterProfile } from './types';
 import Button from './components/ui/Button';
 import GradientMenu from './components/ui/gradient-menu';
-import { audioService } from './services/audioService';
+import { storageService } from './services/storageService';
 import { IoHomeOutline, IoVolumeHighOutline, IoVolumeMuteOutline, IoExpandOutline, IoContractOutline } from 'react-icons/io5';
 
 
@@ -26,6 +27,10 @@ const App: React.FC = () => {
     audioService.stopMusic();
     audioService.playMusic('music_menu');
     setFinalScore(score);
+    const playerName = prompt('Enter your name for the high score list:', 'Player 1');
+    if (playerName) {
+      storageService.saveHighScore(score, playerName);
+    }
     setGameState(GameState.GAME_OVER);
   }, []);
   
@@ -38,6 +43,10 @@ const App: React.FC = () => {
   const handleMuteToggle = useCallback(() => {
     const newMuteState = audioService.toggleMute();
     setIsMuted(newMuteState);
+  }, []);
+
+  const handleShowHighScores = useCallback(() => {
+    setGameState(GameState.HIGH_SCORES);
   }, []);
 
   const handleToggleFullscreen = useCallback(() => {
@@ -79,9 +88,11 @@ const App: React.FC = () => {
                 <Button onClick={handleRestart}>Return to Menu</Button>
             </div>
         );
+      case GameState.HIGH_SCORES:
+        return <HighScoresScreen onBack={handleRestart} />;
       case GameState.MENU:
       default:
-        return <MenuScreen onStartGame={handleStartGame} />;
+        return <MenuScreen onStartGame={handleStartGame} onShowHighScores={handleShowHighScores} />;
     }
   };
 

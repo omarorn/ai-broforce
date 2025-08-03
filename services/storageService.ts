@@ -2,8 +2,39 @@ import type { GeneratedCharacters, SavedCast, CharacterProfile } from '../types'
 
 const CASTS_STORAGE_KEY = 'ai-broforce-casts';
 const INDIVIDUALS_STORAGE_KEY = 'ai-broforce-individuals';
+const HIGH_SCORES_STORAGE_KEY = 'ai-broforce-high-scores';
+
+interface HighScore {
+  score: number;
+  playerName: string;
+  date: number;
+}
 
 class StorageService {
+  // --- High Score Management ---
+
+  public saveHighScore(score: number, playerName: string): void {
+    try {
+      const highScores = this.loadHighScores();
+      highScores.push({ score, playerName, date: Date.now() });
+      highScores.sort((a, b) => b.score - a.score);
+      highScores.splice(10); // Keep only top 10
+      localStorage.setItem(HIGH_SCORES_STORAGE_KEY, JSON.stringify(highScores));
+    } catch (error) {
+      console.error("Error saving high score:", error);
+    }
+  }
+
+  public loadHighScores(): HighScore[] {
+    try {
+      const data = localStorage.getItem(HIGH_SCORES_STORAGE_KEY);
+      return data ? (JSON.parse(data) as HighScore[]) : [];
+    } catch (error) {
+      console.error("Error loading high scores:", error);
+      return [];
+    }
+  }
+
   // --- Cast Management ---
 
   public saveCast(name: string, characters: GeneratedCharacters): void {

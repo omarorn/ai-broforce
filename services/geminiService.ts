@@ -108,7 +108,7 @@ Assign a creative weaponType, a unique specialAbility, a unique movementAbility,
 }
 
 export async function generateCharacterImage(character: CharacterProfile): Promise<string> {
-    const prompt = `Full body portrait of an action hero. Description: "${character.description}". Wielding a ${character.weaponType}. 8-bit pixel art style, vibrant colors, action pose, side-scroller game character, transparent PNG background.`;
+    const prompt = `Full body portrait of an action hero. Description: "${character.description}". Wielding a ${character.weaponType}. 8-bit pixel art style, vibrant colors, action pose, side-scroller game character. Absolutely no background, transparent PNG.`;
     
     try {
         const response = await ai.models.generateImages({

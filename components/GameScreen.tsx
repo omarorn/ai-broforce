@@ -55,6 +55,7 @@ const GameScreen: React.FC<GameScreenProps> = ({ characters, startingHero, onGam
   const [crates, setCrates] = useState<Crate[]>([]);
   const [explosions, setExplosions] = useState<Explosion[]>([]);
   const [turrets, setTurrets] = useState<Turret[]>([]);
+  const [spikePits, setSpikePits] = useState<SpikePit[]>([]);
   const [score, setScore] = useState(0);
   const [levelIndex, setLevelIndex] = useState(0);
   const [bulletCooldown, setBulletCooldown] = useState(0);
@@ -72,7 +73,8 @@ const GameScreen: React.FC<GameScreenProps> = ({ characters, startingHero, onGam
   const createEnemy = useCallback((base: Omit<Enemy, 'id' | 'type' | 'villain' | 'health' | 'maxHealth' | 'damageFlash'>, villain: CharacterProfile): Enemy => {
     const health = base.isBoss ? C.BOSS_MAX_HEALTH : C.ENEMY_MAX_HEALTH;
     return {
-      id: nextObjectId.current++, type: 'enemy', ...base, villain, health, maxHealth: health, damageFlash: 0
+      id: nextObjectId.current++, type: 'enemy', ...base, villain, health, maxHealth: health, damageFlash: 0,
+      behavior: base.behavior || 'shoot'
     };
   }, []);
 
@@ -82,6 +84,10 @@ const GameScreen: React.FC<GameScreenProps> = ({ characters, startingHero, onGam
   
   const createCage = (x:number, y:number, width:number, height:number): RescueCage => ({
       id: nextObjectId.current++, type: 'rescue_cage', x, y, width, height, health: C.CAGE_HEALTH
+  });
+
+  const createSpikePit = (x:number, y:number, width:number, height:number): SpikePit => ({
+      id: nextObjectId.current++, type: 'spike_pit', x, y, width, height
   });
 
   const createExplosion = (x: number, y: number, width: number, height: number): Explosion => ({
@@ -115,6 +121,12 @@ const GameScreen: React.FC<GameScreenProps> = ({ characters, startingHero, onGam
 
     setCages(levelData.cages.map(c => createCage(c.x, c.y, c.width, c.height)));
     
+    if (levelData.spikePits) {
+        setSpikePits(levelData.spikePits.map(s => createSpikePit(s.x, s.y, s.width, s.height)));
+    } else {
+        setSpikePits([]);
+    }
+
     const newEnemies = levelData.enemies.map(e => createEnemy(e, characters.villains[Math.floor(Math.random() * characters.villains.length)]));
     if (levelData.boss) {
         newEnemies.push(createEnemy(levelData.boss, characters.villains[0]));
@@ -332,7 +344,7 @@ const GameScreen: React.FC<GameScreenProps> = ({ characters, startingHero, onGam
 
     // Grappling Hook
     if (movementAbility.includes('grappl') && keysPressed.current['q'] && !player.grapple) {
-        const grappleTarget = findGrapplePoint(player, platforms);
+        const grappleTarget = findGrapplePoint(player, crates);
         if (grappleTarget) {
             const dx = grappleTarget.x - (player.x + player.width / 2);
             const dy = grappleTarget.y - (player.y + player.height / 2);
@@ -365,7 +377,153 @@ const GameScreen: React.FC<GameScreenProps> = ({ characters, startingHero, onGam
     } else if (player.grapple && !keysPressed.current['q']) {
         setPlayer(p => ({...p, grapple: null}));
     }
-}, [player, yVelocity, bulletCooldown, bullets, enemies, crates, cages, score, levelIndex, characters, swapHero, onGameOver, screenShake.magnitude, isPaused]);
+
+    // --- SPIKE PIT COLLISION ---
+    for (const spikePit of spikePits) {
+        if (checkCollision(player, spikePit) && !player.isInvincible) {
+            setPlayer(p => ({...p, health: 0, damageFlash: 30}));
+            triggerScreenShake(10, 500);
+        }
+    }
+
+    // --- ENEMY & PLAYER COLLISION ---
+    for (const enemy of enemies) {
+        if (checkCollision(player, enemy) && !player.isInvincible) {
+            const damage = enemy.behavior === 'charge' ? 20 : 10;
+            setPlayer(p => ({...p, health: p.health - damage, damageFlash: 30, isInvincible: true, invincibilityTimer: 60}));
+            triggerScreenShake(5, 200);
+        }
+    }
+
+    // --- ENEMY LOGIC ---
+    setEnemies(prevEnemies => {
+        const newBullets: Bullet[] = [];
+        const updatedEnemies = prevEnemies.map(enemy => {
+            let newEnemy = { ...enemy };
+            const playerCenter = { x: player.x + player.width / 2, y: player.y + player.height / 2 };
+            const enemyCenter = { x: newEnemy.x + newEnemy.width / 2, y: newEnemy.y + newEnemy.height / 2 };
+            const dx = playerCenter.x - enemyCenter.x;
+            const dy = playerCenter.y - enemyCenter.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+
+            // Common logic: face player
+            if (dx > 0) newEnemy.direction = 'right';
+            else newEnemy.direction = 'left';
+
+            // Behavior-specific logic
+            if (newEnemy.isBoss) {
+                if (!newEnemy.attackPattern || newEnemy.attackPatternCooldown <= 0) {
+                    const patterns = ['spread', 'beam', 'hail'];
+                    newEnemy.attackPattern = patterns[Math.floor(Math.random() * patterns.length)] as 'spread' | 'beam' | 'hail';
+                    newEnemy.attackPatternCooldown = 240;
+                }
+                newEnemy.attackPatternCooldown--;
+
+                switch (newEnemy.attackPattern) {
+                    case 'spread':
+                        if (newEnemy.shootCooldown <= 0) {
+                            for (let i = 0; i < 5; i++) {
+                                newBullets.push({
+                                    id: nextObjectId.current++, type: 'bullet', owner: 'enemy', weaponType: 'Rifle',
+                                    x: newEnemy.x, y: newEnemy.y + newEnemy.height / 2,
+                                    vx: (newEnemy.direction === 'right' ? 1 : -1) * C.BULLET_SPEED * (0.8 + Math.random() * 0.4), vy: (i - 2) * 1.5,
+                                    width: C.BULLET_WIDTH, height: C.BULLET_HEIGHT
+                                });
+                            }
+                            newEnemy.shootCooldown = 60;
+                        }
+                        break;
+                    case 'beam':
+                        if (newEnemy.shootCooldown <= 0) {
+                            newBullets.push({
+                                id: nextObjectId.current++, type: 'bullet', owner: 'enemy', weaponType: 'Rifle',
+                                x: newEnemy.x, y: newEnemy.y + newEnemy.height / 2,
+                                vx: dx / distance * C.BULLET_SPEED * 1.5, vy: dy / distance * C.BULLET_SPEED * 1.5,
+                                width: C.BULLET_WIDTH * 3, height: C.BULLET_HEIGHT * 3
+                            });
+                            newEnemy.shootCooldown = 90;
+                        }
+                        break;
+                    case 'hail':
+                        if (newEnemy.shootCooldown % 10 === 0) {
+                            newBullets.push({
+                                id: nextObjectId.current++, type: 'bullet', owner: 'enemy', weaponType: 'Rifle',
+                                x: Math.random() * C.GAME_WIDTH, y: 0,
+                                vx: 0, vy: C.BULLET_SPEED,
+                                width: C.BULLET_WIDTH, height: C.BULLET_HEIGHT
+                            });
+                        }
+                        newEnemy.shootCooldown = 120;
+                        break;
+                }
+
+            } else {
+                switch (newEnemy.behavior) {
+                    case 'fly':
+                        newEnemy.y += dy / distance * newEnemy.moveSpeed / 2;
+                        newEnemy.x += dx / distance * newEnemy.moveSpeed / 2;
+                        if (newEnemy.shootCooldown <= 0 && distance < 400) {
+                            newBullets.push({
+                                id: nextObjectId.current++, type: 'bullet', owner: 'enemy', weaponType: 'Rifle',
+                                x: newEnemy.x, y: newEnemy.y + newEnemy.height / 2,
+                                vx: dx / distance * C.BULLET_SPEED * 0.5, vy: dy / distance * C.BULLET_SPEED * 0.5,
+                                width: C.BULLET_WIDTH, height: C.BULLET_HEIGHT
+                            });
+                            newEnemy.shootCooldown = 120;
+                        }
+                        break;
+                    case 'charge':
+                        newEnemy.x += dx / distance * newEnemy.moveSpeed * 1.5;
+                        // Simple ground check
+                        const groundY = C.GAME_HEIGHT - 50 - newEnemy.height;
+                        if (newEnemy.y < groundY) {
+                            newEnemy.y += C.GRAVITY * 2;
+                        }
+                        if (newEnemy.y > groundY) {
+                            newEnemy.y = groundY;
+                        }
+                        break;
+                    case 'shoot':
+                    default:
+                        // Standard ground movement
+                        newEnemy.x += (newEnemy.direction === 'right' ? 1 : -1) * newEnemy.moveSpeed;
+                        if (newEnemy.x <= 0 || newEnemy.x >= C.GAME_WIDTH - newEnemy.width) {
+                            newEnemy.direction = newEnemy.direction === 'left' ? 'right' : 'left';
+                        }
+                        if (newEnemy.shootCooldown <= 0 && distance < 300 && Math.abs(dy) < 50) {
+                            newBullets.push({
+                                id: nextObjectId.current++, type: 'bullet', owner: 'enemy', weaponType: 'Rifle',
+                                x: newEnemy.x, y: newEnemy.y + newEnemy.height / 2,
+                                vx: (newEnemy.direction === 'right' ? 1 : -1) * C.BULLET_SPEED * 0.7, vy: 0,
+                                width: C.BULLET_WIDTH, height: C.BULLET_HEIGHT
+                            });
+                            newEnemy.shootCooldown = 150;
+                        }
+                        break;
+                }
+            }
+
+            // Common logic: cooldowns and collision with platforms
+            newEnemy.shootCooldown = Math.max(0, newEnemy.shootCooldown - 1);
+            
+            for(const platform of crates) {
+                if(checkCollision(newEnemy, platform)) {
+                    if (newEnemy.behavior !== 'fly') {
+                        newEnemy.y = platform.y - newEnemy.height;
+                    }
+                }
+            }
+
+            return newEnemy;
+        });
+        
+        if (newBullets.length > 0) {
+            setBullets(b => [...b, ...newBullets]);
+        }
+
+        return updatedEnemies;
+    });
+}, [player, yVelocity, bulletCooldown, bullets, crates, cages, score, levelIndex, characters, swapHero, onGameOver, screenShake.magnitude, isPaused]);
 
 const findGrapplePoint = (player: Player, platforms: Crate[]): {x: number, y: number} | null => {
     const direction = player.direction === 'right' ? 1 : -1;
@@ -409,6 +567,27 @@ const findGrapplePoint = (player: Player, platforms: Crate[]): {x: number, y: nu
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
+  }, []);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const gamepads = navigator.getGamepads();
+      if (gamepads[0]) {
+        const gamepad = gamepads[0];
+        keysPressed.current['a'] = gamepad.axes[0] < -0.5;
+        keysPressed.current['d'] = gamepad.axes[0] > 0.5;
+        keysPressed.current['w'] = gamepad.buttons[12].pressed;
+        keysPressed.current['s'] = gamepad.buttons[13].pressed;
+        keysPressed.current[' '] = gamepad.buttons[0].pressed;
+        keysPressed.current['e'] = gamepad.buttons[1].pressed;
+        keysPressed.current['shift'] = gamepad.buttons[2].pressed;
+        keysPressed.current['q'] = gamepad.buttons[3].pressed;
+        if (gamepad.buttons[9].pressed) {
+            setIsPaused(p => !p);
+        }
+      }
+    }, 1000/60);
+    return () => clearInterval(interval);
   }, []);
   
   const Sprite = ({ entity, color, children, extraClasses='' } : {entity: GameEntityType, color: string, children?: React.ReactNode, extraClasses?: string}) => (
@@ -467,6 +646,7 @@ const findGrapplePoint = (player: Player, platforms: Crate[]): {x: number, y: nu
 
         {crates.map(c => <Sprite key={c.id} entity={c} color="bg-yellow-900/80 border-2 border-yellow-900" />)}
         {cages.map(c => <Sprite key={c.id} entity={c} color="bg-gray-500/50 border-4 border-gray-400 flex items-center justify-center text-3xl text-white">?</Sprite>)}
+        {spikePits.map(s => <Sprite key={s.id} entity={s} color="bg-red-900/80 border-t-4 border-red-500" />)}
         
         <PlayerSprite />
 
