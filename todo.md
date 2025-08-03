@@ -4,7 +4,8 @@ This file tracks planned features and improvements for the "AI Broforce: Recharg
 
 ## Bugs
 - [x] Fix game freeze and annoying sound loop on startup.
-
+- [ ] Missing menu
+![alt text](image.png)
 ## High Priority
 - [x] fix floating menu, no menu aivalable or settings
 - [ ] Implement advanced movement: `Grappling Hook`, `Flight`, and `Glide`.
