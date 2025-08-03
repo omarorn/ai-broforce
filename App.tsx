@@ -10,6 +10,7 @@ import { IoHomeOutline, IoVolumeMuteOutline, IoVolumeHighOutline, IoExpandOutlin
 
 
 const App: React.FC = () => {
+  console.log("App.tsx: Rendering");
   const [gameState, setGameState] = useState<GameState>(GameState.MENU);
   const [characterData, setCharacterData] = useState<{characters: GeneratedCharacters, hero: CharacterProfile} | null>(null);
   const [finalScore, setFinalScore] = useState<number>(0);
