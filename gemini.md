@@ -1,3 +1,5 @@
+Be sure to always update the todo.md tasks.ms gemini_code_log.md
+
 This file provides guidance to Google's Gemini models when working with code in this repository. Following these guidelines will enable you to act as a more effective and autonomous coding partner.
 
 This is a web-based 2D side-scrolling action game called "AI Broforce: Recharged". The project is built with React and TypeScript, using Vite for the development environment. The core gameplay loop, level structure, and basic player mechanics are already in place. Your primary role is to assist in implementing new features, fixing bugs, refactoring code, and writing tests.

@@ -1,4 +1,3 @@
-
 class AudioService {
   private audioContext: AudioContext | null = null;
   private sounds: Map<string, AudioBuffer> = new Map();
@@ -7,6 +6,7 @@ class AudioService {
   private gainNode: GainNode | null = null;
   private voices: SpeechSynthesisVoice[] = [];
   private areVoicesLoaded = false;
+  private isInitialized = false; // New flag
 
   // SFX generated from https://sfxr.me/
   private soundData: { [key: string]: string } = {
@@ -24,6 +24,15 @@ class AudioService {
 
   constructor() {
     // Defer initialization until first user interaction to comply with browser audio policies.
+    // However, if the context already exists (e.g. from a previous interaction), we can initialize right away.
+    if (typeof window !== 'undefined' && (window.AudioContext || (window as any).webkitAudioContext)) {
+        // Check if context is already available and in a running state
+        // This can happen with hot-reloading or if user has already interacted with the page
+        const existingContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+        if (existingContext.state === 'running') {
+            this.init();
+        }
+    }
   }
 
   private loadVoices() {
@@ -48,10 +57,14 @@ class AudioService {
     }
   }
 
-  private async init() {
-    if (this.audioContext) return;
+  public async init() {
+    if (this.isInitialized || this.audioContext) return;
     try {
       this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      // Resume context if it's suspended, which can happen on page load
+      if (this.audioContext.state === 'suspended') {
+          await this.audioContext.resume();
+      }
       this.gainNode = this.audioContext.createGain();
       this.gainNode.connect(this.audioContext.destination);
       if (this.isMuted) {
@@ -59,6 +72,7 @@ class AudioService {
       }
       this.loadVoices(); // Init TTS
       await this._loadAllSounds();
+      this.isInitialized = true; // Set flag to true after everything is loaded
     } catch (e) {
       console.error("Web Audio API is not supported in this browser or initialization failed.", e);
     }
@@ -86,7 +100,11 @@ class AudioService {
   }
 
   public async playSound(name: string): Promise<void> {
-    await this.init(); // Ensure context is ready
+    if (!this.isInitialized) {
+        // Optionally queue the sound or log a warning. For now, we'll just return.
+        console.warn(`Audio service not ready, cannot play sound: ${name}`);
+        return;
+    }
     if (!this.audioContext || !this.gainNode || !this.sounds.has(name)) {
         return;
     };
@@ -98,7 +116,10 @@ class AudioService {
   }
 
   public async playMusic(name: string): Promise<void> {
-    await this.init();
+    if (!this.isInitialized) {
+        console.warn(`Audio service not ready, cannot play music: ${name}`);
+        return;
+    }
     if (!this.audioContext || !this.gainNode || !this.sounds.has(name)) {
         return;
     }
@@ -121,8 +142,11 @@ class AudioService {
   }
   
   public async speak(text: string): Promise<void> {
-    await this.init(); // Ensure AudioContext is ready (and by extension, the voice attempt has been made)
-    if (!('speechSynthesis' in window) || !this.audioContext || !text.trim()) return;
+    if (!this.isInitialized) {
+        console.warn(`Audio service not ready, cannot speak.`);
+        return;
+    }
+    if (!('speechSynthesis' in window) || !this.audioContext || !text.trim() || window.speechSynthesis.speaking) return;
 
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
@@ -154,7 +178,7 @@ class AudioService {
 
   public toggleMute(): boolean {
     // Call init here to ensure AudioContext is created on first mute toggle if no sound has been played yet.
-    if (!this.audioContext) {
+    if (!this.isInitialized) {
         this.init();
     }
     
@@ -166,5 +190,21 @@ class AudioService {
     return this.isMuted;
   }
 }
+
+export const audioService = new AudioService();
+
+// Pre-warm the audio service on any user interaction.
+const prewarmAudio = () => {
+  // It's now safe to call init directly, as it has checks to prevent re-initialization.
+  audioService.init();
+  document.removeEventListener('click', prewarmAudio);
+  document.removeEventListener('keydown', prewarmAudio);
+};
+
+if (typeof window !== 'undefined') {
+  document.addEventListener('click', prewarmAudio);
+  document.addEventListener('keydown', prewarmAudio);
+}
+
 
 export const audioService = new AudioService();

@@ -7,7 +7,7 @@ import Button from './ui/Button';
 import Input from './ui/Input';
 import Loader from './ui/Loader';
 import CharacterProfileScreen from './CharacterProfileScreen';
-import { IoVolumeHighOutline } from 'react-icons/io5';
+import { IoVolumeHighOutline, IoVolumeMuteOutline, IoExpandOutline, IoContractOutline } from 'react-icons/io5';
 
 interface MenuScreenProps {
   onStartGame: (characters: GeneratedCharacters, startingHero: CharacterProfile) => void;
@@ -138,26 +138,37 @@ const MenuScreen: React.FC<MenuScreenProps> = ({ onStartGame }) => {
   const [error, setError] = useState<string | null>(null);
   
   const [savedCasts, setSavedCasts] = useState<SavedCast[]>([]);
-  const [slideshowIndex, setSlideshowIndex] = useState(0);
+  const [individualCharacters, setIndividualCharacters] = useState<CharacterProfile[]>([]);
+  const [isGeneratingPortraits, setIsGeneratingPortraits] = useState(false);
   
   const [currentCastName, setCurrentCastName] = useState<string | null>(null);
   const [isSaveModalOpen, setIsSaveModalOpen] = useState<boolean>(false);
   const saveInputRef = useRef<HTMLInputElement>(null);
+  const [isMuted, setIsMuted] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(!!document.fullscreenElement);
+
+  const handleMuteToggle = () => {
+      const newMuteState = audioService.toggleMute();
+      setIsMuted(newMuteState);
+  }
+
+  const handleToggleFullscreen = () => {
+    if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(err => {
+            console.error(`Error attempting to enable full-screen mode: ${err.message} (${err.name})`);
+        });
+    } else {
+        if (document.exitFullscreen) {
+            document.exitFullscreen();
+        }
+    }
+  };
 
   useEffect(() => {
-    audioService.playMusic('music_menu');
     setSavedCasts(storageService.loadCasts());
+    setIndividualCharacters(storageService.loadIndividualCharacters());
     return () => audioService.stopMusic();
   }, []);
-  
-  useEffect(() => {
-      if (view !== 'portraits' || !characters) return;
-      const allChars = [...characters.heroes, ...characters.villains];
-      const interval = setInterval(() => {
-          setSlideshowIndex(prev => (prev + 1) % allChars.length);
-      }, 3000);
-      return () => clearInterval(interval);
-  }, [view, characters]);
 
   const handleGenerateCharacters = async () => {
     if (!theme.trim() || characterCount <= 0) {
@@ -182,40 +193,39 @@ const MenuScreen: React.FC<MenuScreenProps> = ({ onStartGame }) => {
     }
   };
   
-  const handleGeneratePortraits = async () => {
+  const handleGenerateAllPortraits = async () => {
       if (!characters) return;
-      setView('portraits');
-      setLoadingMessage('Generating epic portraits...');
-
-      const allChars = [...characters.heroes, ...characters.villains];
-      const imagePromises = allChars.map(char =>
-        generateCharacterImage(char)
-          .then(imageUrl => ({ id: char.id, imageUrl }))
-          .catch(err => {
-            console.error(`Failed to generate image for ${char.name}:`, err.message);
-            return { id: char.id, imageUrl: null }; // Fail gracefully
-          })
-      );
-
-      const results = await Promise.all(imagePromises);
-
-      const finalCharacters: GeneratedCharacters = JSON.parse(JSON.stringify(characters));
-      results.forEach(result => {
-        if (result.imageUrl) {
-          const { id, imageUrl } = result;
-          let character = finalCharacters.heroes.find(c => c.id === id) || finalCharacters.villains.find(c => c.id === id);
-          if (character) character.imageUrl = imageUrl;
-        }
-      });
       
-      setCharacters(finalCharacters);
-      handleGenerateBriefing(finalCharacters);
+      setIsGeneratingPortraits(true);
+      
+      const charsToUpdate = [...characters.heroes, ...characters.villains].filter(c => !c.imageUrl);
+
+      for (const char of charsToUpdate) {
+          try {
+              const imageUrl = await generateCharacterImage(char);
+              setCharacters(currentChars => {
+                  if (!currentChars) return null;
+                  const newChars = JSON.parse(JSON.stringify(currentChars));
+                  const charToUpdate = newChars.heroes.find(c => c.id === char.id) || newChars.villains.find(c => c.id === char.id);
+                  if (charToUpdate) {
+                      charToUpdate.imageUrl = imageUrl;
+                  }
+                  return newChars;
+              });
+          } catch (err) {
+              console.error(`Failed to generate image for ${char.name}:`, err);
+              // Optionally set a placeholder error image
+          }
+      }
+      
+      setIsGeneratingPortraits(false);
   };
   
-  const handleGenerateBriefing = async (currentCast: GeneratedCharacters) => {
+  const handleGenerateBriefing = async () => {
+      if (!characters) return;
       setView('briefing');
       setLoadingMessage('Generating mission briefing...');
-      const briefing = await generateMissionBriefing(currentCast);
+      const briefing = await generateMissionBriefing(characters);
       setCharacters(chars => chars ? ({...chars, missionBriefing: briefing}) : null);
   };
 
@@ -251,8 +261,12 @@ const MenuScreen: React.FC<MenuScreenProps> = ({ onStartGame }) => {
     // Auto-save if it's an existing, named cast
     if (currentCastName) {
         storageService.saveCast(currentCastName, newCharacters);
+    } else {
+        // If not part of a named cast, still save the individual character update
+        storageService.saveIndividualCharacter(updatedChar);
     }
-
+    
+    setIndividualCharacters(storageService.loadIndividualCharacters());
     setView('review');
     setEditingCharacter(null);
   };
@@ -262,6 +276,7 @@ const MenuScreen: React.FC<MenuScreenProps> = ({ onStartGame }) => {
           storageService.saveCast(name.trim(), characters);
           setCurrentCastName(name.trim());
           setSavedCasts(storageService.loadCasts());
+          setIndividualCharacters(storageService.loadIndividualCharacters());
           setIsSaveModalOpen(false);
       }
   };
@@ -279,12 +294,19 @@ const MenuScreen: React.FC<MenuScreenProps> = ({ onStartGame }) => {
       }
   };
 
+  const handleDeleteIndividual = (id: number) => {
+      if(window.confirm(`Are you sure you want to permanently delete this character?`)){
+        storageService.deleteIndividualCharacter(id);
+        setIndividualCharacters(storageService.loadIndividualCharacters());
+      }
+  };
+
   const renderContent = () => {
     switch (view) {
         case 'casting':
             const placeholderChar: CharacterProfile = {id:0, name:'', description:'', weaponType:'', specialAbility:'', movementAbility:'', catchphrase:''};
             return (
-                <div className="min-h-screen bg-gray-900 flex flex-col items-center justify-center p-4">
+                <div className="min-h-screen bg-gray-900 flex flex-col items-center justify-center p-4 z-10">
                     <h2 className="text-3xl text-yellow-400 mb-6 uppercase animate-pulse">{loadingMessage}</h2>
                     <div className="w-full max-w-6xl grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
                         {Array.from({length: 5}).map((_, i) => <CharacterCard key={i} character={placeholderChar} isCycling={true} />)}
@@ -294,14 +316,20 @@ const MenuScreen: React.FC<MenuScreenProps> = ({ onStartGame }) => {
         
         case 'review':
              if (!characters) return null;
+             const portraitsToGenerate = [...characters.heroes, ...characters.villains].filter(c => !c.imageUrl).length;
              return (
-                 <div className="min-h-screen bg-gray-900 flex flex-col items-center p-4">
+                 <div className="min-h-screen bg-gray-900 flex flex-col items-center p-4 z-10">
                      <div className="w-full max-w-7xl mx-auto text-center">
                          <h1 className="text-3xl md:text-4xl text-yellow-400 my-4 uppercase">{currentCastName || 'Your New Cast'}</h1>
                          <div className="flex justify-center gap-4 mb-6">
-                            <Button onClick={handleGeneratePortraits} className="!bg-green-600 hover:!bg-green-700 text-lg">Generate Portraits & Continue</Button>
-                            <Button onClick={() => setIsSaveModalOpen(true)} className="!bg-purple-600 hover:!bg-purple-700 text-lg">
+                            <Button onClick={handleGenerateAllPortraits} className="!bg-blue-600 hover:!bg-blue-700 text-lg" disabled={isGeneratingPortraits || portraitsToGenerate === 0}>
+                                {isGeneratingPortraits ? 'Generating...' : `Generate All Portraits (${portraitsToGenerate})`}
+                            </Button>
+                            <Button onClick={() => setIsSaveModalOpen(true)} className="!bg-purple-600 hover:!bg-purple-700 text-lg" disabled={isGeneratingPortraits}>
                                 {currentCastName ? 'Save As...' : 'Save Cast'}
+                            </Button>
+                            <Button onClick={handleGenerateBriefing} className="!bg-green-600 hover:!bg-green-700 text-lg" disabled={isGeneratingPortraits}>
+                                Proceed to Mission Briefing
                             </Button>
                          </div>
                          <h2 className="text-xl text-white mb-2">Heroes</h2>
@@ -315,29 +343,11 @@ const MenuScreen: React.FC<MenuScreenProps> = ({ onStartGame }) => {
                      </div>
                  </div>
              )
-
-        case 'portraits':
-            if (!characters) return null;
-            const allChars = [...characters.heroes, ...characters.villains];
-            const currentChar = allChars[slideshowIndex];
-            return (
-                <div className="min-h-screen bg-gray-900 flex flex-col items-center justify-center p-4">
-                    <h2 className="text-3xl text-yellow-400 mb-6 uppercase">{loadingMessage}</h2>
-                    {currentChar ? (
-                        <div className="flex flex-col items-center">
-                            <div className="w-full max-w-xs">
-                                <CharacterCard character={currentChar} />
-                            </div>
-                            <p className="mt-4 text-gray-400">{slideshowIndex + 1} / {allChars.length}</p>
-                        </div>
-                    ) : <Loader />}
-                </div>
-            );
             
         case 'briefing':
             if (!characters) return null;
             return (
-                <div className="min-h-screen bg-gray-900 flex flex-col items-center justify-center p-4">
+                <div className="min-h-screen bg-gray-900 flex flex-col items-center justify-center p-4 z-10">
                     <div className="w-full max-w-2xl mx-auto text-center bg-gray-800/50 p-8 border-4 border-gray-700">
                         <h1 className="text-3xl md:text-4xl text-yellow-400 mb-6 uppercase">Mission Briefing</h1>
                         <p className="text-lg text-white leading-relaxed mb-8">
@@ -353,7 +363,7 @@ const MenuScreen: React.FC<MenuScreenProps> = ({ onStartGame }) => {
         case 'edit_character':
             if (!editingCharacter) return null;
             return (
-                <div className="min-h-screen bg-gray-900 flex flex-col items-center justify-center p-4">
+                <div className="min-h-screen bg-gray-900 flex flex-col items-center justify-center p-4 z-10">
                     <CharacterProfileScreen 
                         character={editingCharacter} 
                         onSave={handleSaveCharacter} 
@@ -364,29 +374,58 @@ const MenuScreen: React.FC<MenuScreenProps> = ({ onStartGame }) => {
             
         case 'casting_couch':
             return (
-                <div className="min-h-screen bg-gray-900 flex flex-col items-center p-4">
+                <div className="min-h-screen bg-gray-900 flex flex-col items-center p-4 z-10">
                     <h1 className="text-3xl md:text-4xl text-yellow-400 my-6 uppercase">Casting Couch</h1>
-                    <div className="w-full max-w-4xl space-y-4">
-                        {savedCasts.length > 0 ? (
-                            savedCasts.map(cast => (
-                                <div key={cast.createdAt} className="bg-gray-800 p-4 flex flex-col sm:flex-row justify-between sm:items-center gap-4 border-2 border-gray-700">
-                                    <div className="flex-grow">
-                                        <h2 className="text-xl text-white">{cast.name}</h2>
-                                        <p className="text-sm text-gray-400">
-                                            {cast.characters.heroes.length} Heroes, {cast.characters.villains.length} Villains - 
-                                            Saved on {new Date(cast.createdAt).toLocaleDateString()}
-                                        </p>
-                                    </div>
-                                    <div className="flex gap-2 flex-shrink-0">
-                                        <Button onClick={() => handleLoadCast(cast)} className="!py-2">Load</Button>
-                                        <Button onClick={() => handleDeleteCast(cast.name)} className="!bg-red-800 hover:!bg-red-900 !py-2">Delete</Button>
-                                    </div>
+                    
+                    <div className="w-full max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-16">
+                        {/* Saved Casts Section */}
+                        <div>
+                            <h2 className="text-2xl text-white mb-4 text-center">Saved Casts</h2>
+                            <div className="space-y-4">
+                                {savedCasts.length > 0 ? (
+                                    savedCasts.map(cast => (
+                                        <div key={cast.createdAt} className="bg-gray-800 p-4 flex flex-col sm:flex-row justify-between sm:items-center gap-4 border-2 border-gray-700">
+                                            <div className="flex-grow">
+                                                <h3 className="text-xl text-white">{cast.name}</h3>
+                                                <p className="text-sm text-gray-400">
+                                                    {cast.characters.heroes.length} Heroes, {cast.characters.villains.length} Villains - 
+                                                    Saved on {new Date(cast.createdAt).toLocaleDateString()}
+                                                </p>
+                                            </div>
+                                            <div className="flex gap-2 flex-shrink-0">
+                                                <Button onClick={() => handleLoadCast(cast)} className="!py-2">Load</Button>
+                                                <Button onClick={() => handleDeleteCast(cast.name)} className="!bg-red-800 hover:!bg-red-900 !py-2">Delete</Button>
+                                            </div>
+                                        </div>
+                                    ))
+                                ) : (
+                                    <p className="text-center text-gray-400 text-lg py-8">No saved casts yet.</p>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* All Individual Characters Section */}
+                        <div>
+                            <h2 className="text-2xl text-white mb-4 text-center">All Created Characters</h2>
+                            {individualCharacters.length > 0 ? (
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    {individualCharacters.map(char => (
+                                        <div key={char.id} className="bg-gray-800 p-3 border-2 border-gray-700">
+                                            <h3 className="text-lg text-yellow-400 truncate">{char.name}</h3>
+                                            <p className="text-sm text-gray-400 truncate">{char.description}</p>
+                                            <div className="mt-3 flex gap-2">
+                                                <Button onClick={() => handleEditCharacter(char)} className="!py-1 !text-sm">Edit</Button>
+                                                <Button onClick={() => handleDeleteIndividual(char.id)} className="!bg-red-800 hover:!bg-red-900 !py-1 !text-sm">Delete</Button>
+                                            </div>
+                                        </div>
+                                    ))}
                                 </div>
-                            ))
-                        ) : (
-                            <p className="text-center text-gray-400 text-lg py-8">No saved casts yet. Go generate some!</p>
-                        )}
+                            ) : (
+                                <p className="text-center text-gray-400 text-lg py-8">No individual characters saved yet.</p>
+                            )}
+                        </div>
                     </div>
+
                     <Button onClick={() => setView('generate')} className="mt-8">Back to Menu</Button>
                 </div>
             );
@@ -394,7 +433,16 @@ const MenuScreen: React.FC<MenuScreenProps> = ({ onStartGame }) => {
         case 'generate':
         default:
           return (
-            <div className="min-h-screen bg-gray-900 flex flex-col items-center justify-center p-4">
+            <div className="min-h-screen bg-gray-900 flex flex-col items-center justify-center p-4 relative z-10">
+              <div className="absolute top-4 right-4 flex gap-2">
+                  <button onClick={handleMuteToggle} className="p-2 rounded-full bg-black/20 hover:bg-black/40 text-white">
+                      {isMuted ? <IoVolumeMuteOutline size={24} /> : <IoVolumeHighOutline size={24} />}
+                  </button>
+                  <button onClick={handleToggleFullscreen} className="p-2 rounded-full bg-black/20 hover:bg-black/40 text-white">
+                      {isFullscreen ? <IoContractOutline size={24} /> : <IoExpandOutline size={24} />}
+                  </button>
+              </div>
+
               <div className="w-full max-w-4xl mx-auto text-center">
                 <h1 className="text-5xl md:text-6xl text-yellow-400 drop-shadow-[0_4px_0_#9A3412] mb-2">AI BROFORCE</h1>
                 <h2 className="text-xl md:text-2xl bg-gray-700 text-white inline-block px-4 py-1 mb-8">RECHARGED</h2>
@@ -425,10 +473,10 @@ const MenuScreen: React.FC<MenuScreenProps> = ({ onStartGame }) => {
                   <Button onClick={handleGenerateCharacters} disabled={!theme.trim() || !characterCount} className="!bg-green-600 hover:!bg-green-700 text-xl px-8 py-4">
                     Generate Cast
                   </Button>
-                  {savedCasts.length > 0 && (
+                  {(savedCasts.length > 0 || individualCharacters.length > 0) && (
                      <div className="mt-6">
                         <Button onClick={() => setView('casting_couch')} className="!bg-purple-600 hover:!bg-purple-700">
-                            View Saved Casts ({savedCasts.length})
+                            View Casting Couch ({savedCasts.length} Casts, {individualCharacters.length} Bros)
                         </Button>
                      </div>
                   )}

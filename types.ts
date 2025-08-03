@@ -51,6 +51,13 @@ export interface Player extends GameObject {
   hasDoubleJumped: boolean;
   isWallSliding: boolean;
   dashTimer: number;
+  isFlying: boolean;
+  isGliding: boolean;
+  grapple: {
+      isGrappling: boolean;
+      target: {x: number, y: number} | null;
+      length: number;
+  } | null;
 }
 
 export interface Enemy extends GameObject {

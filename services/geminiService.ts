@@ -31,7 +31,7 @@ const characterSchema = {
     },
     movementAbility: {
         type: Type.STRING,
-        description: "A unique movement ability. Examples: 'Double Jump', 'Air Dash', 'Wall Slide'."
+        description: "A unique movement ability. Examples: 'Double Jump', 'Air Dash', 'Wall Slide', 'Flight', 'Glide', 'Grappling Hook'."
     },
     catchphrase: {
         type: Type.STRING,

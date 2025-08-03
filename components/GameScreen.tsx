@@ -4,6 +4,8 @@ import { useGameLoop } from '../hooks/useGameLoop';
 import { levels } from '../levels';
 import { audioService } from '../services/audioService';
 import * as C from '../constants';
+import Button from './ui/Button';
+import { IoPause, IoPlay, IoVolumeHighOutline, IoVolumeMuteOutline, IoHomeOutline } from 'react-icons/io5';
 
 // --- DEVELOPMENT ---
 const DEV_MODE_GOD_MODE = true; // Player cannot die
@@ -13,9 +15,10 @@ interface GameScreenProps {
   characters: GeneratedCharacters;
   startingHero: CharacterProfile;
   onGameOver: (score: number) => void;
+  onExit: () => void;
 }
 
-const GameScreen: React.FC<GameScreenProps> = ({ characters, startingHero, onGameOver }) => {
+const GameScreen: React.FC<GameScreenProps> = ({ characters, startingHero, onGameOver, onExit }) => {
   const nextObjectId = useRef(Date.now());
   
   function createPlayer(hero: CharacterProfile, lives: number): Player {
@@ -39,6 +42,9 @@ const GameScreen: React.FC<GameScreenProps> = ({ characters, startingHero, onGam
           hasDoubleJumped: false,
           isWallSliding: false,
           dashTimer: 0,
+          isFlying: false,
+          isGliding: false,
+          grapple: null,
       }
   };
   
@@ -54,6 +60,8 @@ const GameScreen: React.FC<GameScreenProps> = ({ characters, startingHero, onGam
   const [bulletCooldown, setBulletCooldown] = useState(0);
   const [yVelocity, setYVelocity] = useState(0);
   const [screenShake, setScreenShake] = useState({ x: 0, y: 0, magnitude: 0 });
+  const [isPaused, setIsPaused] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
 
   const keysPressed = useRef<{ [key: string]: boolean }>({});
   const coyoteTimeCounter = useRef(0);
@@ -115,7 +123,6 @@ const GameScreen: React.FC<GameScreenProps> = ({ characters, startingHero, onGam
   }, [createEnemy, characters.villains, onGameOver, score]);
 
   useEffect(() => {
-    audioService.playMusic('music_game');
     spawnLevel(levelIndex);
   }, [levelIndex, spawnLevel]);
 
@@ -134,6 +141,8 @@ const GameScreen: React.FC<GameScreenProps> = ({ characters, startingHero, onGam
   }, [characters.heroes, player.hero.id]);
 
   const gameLoop = useCallback(() => {
+    if (isPaused) return;
+
     // --- TIMERS & COOLDOWNS ---
     coyoteTimeCounter.current = Math.max(0, coyoteTimeCounter.current - 1);
     jumpBufferCounter.current = Math.max(0, jumpBufferCounter.current - 1);
@@ -189,7 +198,7 @@ const GameScreen: React.FC<GameScreenProps> = ({ characters, startingHero, onGam
           newPlayerY = platform.y - player.height;
           newYVelocity = 0;
           onGround = true;
-          setPlayer(p => ({...p, hasDoubleJumped: false, isWallSliding: false}));
+          setPlayer(p => ({...p, hasDoubleJumped: false, isWallSliding: false, isFlying: false, isGliding: false, grapple: null }));
           break;
         }
       }
@@ -205,9 +214,25 @@ const GameScreen: React.FC<GameScreenProps> = ({ characters, startingHero, onGam
     
     if (onGround) coyoteTimeCounter.current = 5;
 
-    // Jumping Logic
+    // Jumping Logic & Advanced Movement
     let didJump = false;
     const movementAbility = player.hero.movementAbility.toLowerCase();
+
+    // Flight
+    if (movementAbility.includes('fly') && (keysPressed.current['w'] || keysPressed.current['arrowup'])) {
+        newYVelocity = -C.PLAYER_JUMP_FORCE * 0.6;
+        setPlayer(p => ({...p, isFlying: true}));
+    } else {
+        setPlayer(p => ({...p, isFlying: false}));
+    }
+
+    // Glide
+    if (movementAbility.includes('glide') && (keysPressed.current['w'] || keysPressed.current['arrowup']) && newYVelocity > 0) {
+        newYVelocity *= 0.8; // Reduce fall speed
+        setPlayer(p => ({...p, isGliding: true}));
+    } else {
+        setPlayer(p => ({...p, isGliding: false}));
+    }
 
     if (jumpBufferCounter.current > 0) {
         if (coyoteTimeCounter.current > 0) { // Ground jump
@@ -284,6 +309,26 @@ const GameScreen: React.FC<GameScreenProps> = ({ characters, startingHero, onGam
     if (keysPressed.current['shift'] && movementAbility.includes('dash') && player.dashTimer <=0 && !onGround) {
         setPlayer(p => ({...p, dashTimer: 20, invincibilityTimer: 20}));
         audioService.playSound('dash');
+    }
+
+    // Grappling Hook
+    if (movementAbility.includes('grappl') && keysPressed.current['q'] && !player.grapple) {
+        const grappleTarget = {x: player.x + (player.direction === 'right' ? 200 : -200), y: player.y - 150};
+        setPlayer(p => ({...p, grapple: { isGrappling: true, target: grappleTarget, length: 0}}));
+    }
+
+    if (player.grapple?.isGrappling) {
+        const dx = player.grapple.target.x - player.x;
+        const dy = player.grapple.target.y - player.y;
+        const distance = Math.sqrt(dx*dx + dy*dy);
+        const angle = Math.atan2(dy, dx);
+
+        if (distance > 20) {
+            newX += Math.cos(angle) * C.PLAYER_SPEED * 1.5;
+            newYVelocity = Math.sin(angle) * C.PLAYER_SPEED * 1.5;
+        } else {
+            setPlayer(p => ({...p, grapple: null}));
+        }
     }
 
 
@@ -456,12 +501,20 @@ const GameScreen: React.FC<GameScreenProps> = ({ characters, startingHero, onGam
         setPlayer(p => ({...p, health: Math.min(p.maxHealth, p.health + 25)}));
     }
     prevEnemiesCount.current = enemies.length;
-  }, [player, yVelocity, bulletCooldown, bullets, enemies, crates, cages, score, levelIndex, characters, swapHero, onGameOver, screenShake.magnitude]);
+  }, [player, yVelocity, bulletCooldown, bullets, enemies, crates, cages, score, levelIndex, characters, swapHero, onGameOver, screenShake.magnitude, isPaused]);
 
   useGameLoop(gameLoop);
 
+  const handleMuteToggle = () => {
+      const newMuteState = audioService.toggleMute();
+      setIsMuted(newMuteState);
+  }
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+          setIsPaused(p => !p);
+      }
       keysPressed.current[e.key.toLowerCase()] = true;
       if (e.key === 'w' || e.key === 'ArrowUp') {
         jumpBufferCounter.current = 6;
@@ -488,6 +541,8 @@ const GameScreen: React.FC<GameScreenProps> = ({ characters, startingHero, onGam
     if(player.damageFlash > 0) classes += ' flash-damage';
     if(player.dashTimer > 0) classes += ' opacity-75';
     if(player.isWallSliding) classes += ' border-4 border-cyan-400';
+    if(player.isFlying) classes += ' shadow-2xl shadow-yellow-400';
+    if(player.isGliding) classes += ' opacity-80';
 
     return (
         <Sprite entity={player} color={classes} >
@@ -497,9 +552,30 @@ const GameScreen: React.FC<GameScreenProps> = ({ characters, startingHero, onGam
     );
   }
 
+  const PauseMenu = () => (
+    <div className="absolute inset-0 bg-black/70 flex flex-col items-center justify-center z-50">
+        <h2 className="text-5xl text-yellow-400 mb-8 uppercase">Paused</h2>
+        <div className="flex flex-col gap-4">
+            <Button onClick={() => setIsPaused(false)} className="!text-2xl !px-8 !py-4">Resume</Button>
+            <Button onClick={onExit} className="!text-2xl !px-8 !py-4">Exit to Menu</Button>
+            <Button onClick={handleMuteToggle} className="!text-2xl !px-8 !py-4 !bg-blue-600 hover:!bg-blue-700">
+                {isMuted ? 'Unmute' : 'Mute'}
+            </Button>
+        </div>
+    </div>
+  );
+
   return (
     <div className="flex flex-col items-center justify-center h-screen bg-black">
       <div style={{ width: C.GAME_WIDTH, height: C.GAME_HEIGHT, transform: `translate(${screenShake.x}px, ${screenShake.y}px)` }} className="relative bg-gradient-to-t from-gray-700 to-gray-800 overflow-hidden border-4 border-gray-600 transition-transform duration-75">
+        {isPaused && <PauseMenu />}
+        
+        {player.grapple?.isGrappling && player.grapple.target && (
+            <svg className="absolute inset-0 z-10" style={{pointerEvents: 'none'}}>
+                <line x1={player.x + player.width / 2} y1={player.y + player.height / 2} x2={player.grapple.target.x} y2={player.grapple.target.y} stroke="white" strokeWidth="2" />
+            </svg>
+        )}
+
         {crates.map(c => <Sprite key={c.id} entity={c} color="bg-yellow-900/80 border-2 border-yellow-900" />)}
         {cages.map(c => <Sprite key={c.id} entity={c} color="bg-gray-500/50 border-4 border-gray-400 flex items-center justify-center text-3xl text-white">?</Sprite>)}
         
@@ -537,6 +613,9 @@ const GameScreen: React.FC<GameScreenProps> = ({ characters, startingHero, onGam
                 </div>
             </div>
         </div>
+        <button onClick={() => setIsPaused(p => !p)} className="absolute top-2 right-1/2 translate-x-1/2 text-white p-2 rounded-full bg-black/20 hover:bg-black/40">
+            {isPaused ? <IoPlay size={24} /> : <IoPause size={24} />}
+        </button>
       </div>
     </div>
   );
