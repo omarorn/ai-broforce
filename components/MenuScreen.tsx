@@ -446,6 +446,7 @@ const MenuScreen: React.FC<MenuScreenProps> = ({ onStartGame }) => {
                       value={theme}
                       onChange={(e) => setTheme(e.target.value)}
                       placeholder="e.g., Cyberpunk Ninjas, Space Vikings"
+                      className="flex-grow" // Added flex-grow here
                     />
                      <Button onClick={() => setTheme(getRandomTheme())} className="!bg-blue-600 hover:!bg-blue-700">Random</Button>
                   </div>
