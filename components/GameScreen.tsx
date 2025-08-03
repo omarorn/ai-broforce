@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import type { GeneratedCharacters, Player, Enemy, Bullet, Crate, Explosion, GameEntityType, CharacterProfile, RescueCage, Turret } from '../types';
+import type { GeneratedCharacters, Player, Enemy, Bullet, Crate, Explosion, GameEntityType, CharacterProfile, RescueCage, Turret, SpikePit } from '../types';
 import { useGameLoop } from '../hooks/useGameLoop';
-import { levels } from '../levels';
+import { generateLevel } from '../services/levelGenerator';
 import { audioService } from '../services/audioService';
 import * as C from '../constants';
 import Button from './ui/Button';
@@ -44,6 +44,7 @@ const GameScreen: React.FC<GameScreenProps> = ({ characters, startingHero, onGam
           dashTimer: 0,
           isFlying: false,
           isGliding: false,
+          isDigging: false,
           grapple: null,
       }
   };
@@ -57,7 +58,7 @@ const GameScreen: React.FC<GameScreenProps> = ({ characters, startingHero, onGam
   const [turrets, setTurrets] = useState<Turret[]>([]);
   const [spikePits, setSpikePits] = useState<SpikePit[]>([]);
   const [score, setScore] = useState(0);
-  const [levelIndex, setLevelIndex] = useState(0);
+  const [difficulty, setDifficulty] = useState(0);
   const [bulletCooldown, setBulletCooldown] = useState(0);
   const [yVelocity, setYVelocity] = useState(0);
   const [screenShake, setScreenShake] = useState({ x: 0, y: 0, magnitude: 0 });
@@ -103,12 +104,8 @@ const GameScreen: React.FC<GameScreenProps> = ({ characters, startingHero, onGam
     return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
   };
   
-  const spawnLevel = useCallback((lvlIdx: number) => {
-    const levelData = levels[lvlIdx];
-    if (!levelData) {
-        onGameOver(score); // You win!
-        return;
-    }
+  const spawnLevel = useCallback((diff: number) => {
+    const levelData = generateLevel(diff);
     
     levelStartTime.current = Date.now();
 
@@ -132,11 +129,11 @@ const GameScreen: React.FC<GameScreenProps> = ({ characters, startingHero, onGam
         newEnemies.push(createEnemy(levelData.boss, characters.villains[0]));
     }
     setEnemies(newEnemies);
-  }, [createEnemy, characters.villains, onGameOver, score]);
+  }, [createEnemy, characters.villains]);
 
   useEffect(() => {
-    spawnLevel(levelIndex);
-  }, [levelIndex, spawnLevel]);
+    spawnLevel(difficulty);
+  }, [difficulty, spawnLevel]);
 
   const swapHero = useCallback(() => {
     const availableHeroes = characters.heroes.filter(h => h.id !== player.hero.id);
@@ -188,7 +185,17 @@ const GameScreen: React.FC<GameScreenProps> = ({ characters, startingHero, onGam
     
     const allPlatforms = [...crates, {id: -1, type: 'crate' as const, x: 0, y: C.GAME_HEIGHT - 50, width: C.GAME_WIDTH, height: 50, health: 999}];
     
-    if (movementAbility.includes('dig') && (keysPressed.current['s'] || keysPressed.current['arrowdown']) && onGround) {
+    let onGround = false;
+    for (const platform of allPlatforms) {
+      if (player.x + player.width > platform.x && player.x < platform.x + platform.width) {
+        if (player.y + player.height <= platform.y && player.y + player.height + newYVelocity >= platform.y) {
+          onGround = true;
+          break;
+        }
+      }
+    }
+
+    if (player.hero.movementAbility.toLowerCase().includes('dig') && (keysPressed.current['s'] || keysPressed.current['arrowdown']) && onGround) {
         setPlayer(p => ({...p, isDigging: true}));
     } else {
         setPlayer(p => ({...p, isDigging: false}));
@@ -198,7 +205,7 @@ const GameScreen: React.FC<GameScreenProps> = ({ characters, startingHero, onGam
     let horizontalCollision = false;
     for(const platform of crates) {
         if(checkCollision({...player, x:newX}, platform)) {
-            if (player.isDigging && !staticPlatforms.includes(platform)) { // Allow digging through destructible crates
+            if (player.isDigging) { // Allow digging through destructible crates
                 platform.health = 0; // Destroy the crate
             } else {
                 newX = player.x;
@@ -213,7 +220,7 @@ const GameScreen: React.FC<GameScreenProps> = ({ characters, startingHero, onGam
     newYVelocity += C.GRAVITY;
     let newPlayerY = player.y + newYVelocity;
     
-    let onGround = false;
+    onGround = false;
     for (const platform of allPlatforms) {
       if (player.x + player.width > platform.x && player.x < platform.x + platform.width) {
         if (player.y + player.height <= platform.y && newPlayerY + player.height >= platform.y) {
@@ -523,7 +530,12 @@ const GameScreen: React.FC<GameScreenProps> = ({ characters, startingHero, onGam
 
         return updatedEnemies;
     });
-}, [player, yVelocity, bulletCooldown, bullets, crates, cages, score, levelIndex, characters, swapHero, onGameOver, screenShake.magnitude, isPaused]);
+    
+    if (enemies.length === 0 && cages.length === 0) {
+        setDifficulty(d => d + 1);
+    }
+    
+}, [player, yVelocity, bulletCooldown, bullets, crates, cages, score, difficulty, characters, swapHero, onGameOver, screenShake.magnitude, isPaused]);
 
 const findGrapplePoint = (player: Player, platforms: Crate[]): {x: number, y: number} | null => {
     const direction = player.direction === 'right' ? 1 : -1;
@@ -608,7 +620,7 @@ const findGrapplePoint = (player: Player, platforms: Crate[]): {x: number, y: nu
     return (
         <Sprite entity={player} color={classes} >
           {player.hero.imageUrl && <img src={player.hero.imageUrl} alt={player.hero.name} className="w-full h-full object-contain" style={{transform: player.isWallSliding ? (player.direction === 'left' ? 'scaleX(1)' : 'scaleX(-1)') : ''}} />}
-          <div className="absolute -top-4 text-xs text-white whitespace-nowrap" style={{transform: player.direction === 'left' ? 'scaleX(-1)' : 'scaleX(1)'}}>{player.hero.name}</div>
+          <div className="absolute -top-4 text-xs text-white whitespace-rap" style={{transform: player.direction === 'left' ? 'scaleX(-1)' : 'scaleX(1)'}}>{player.hero.name}</div>
         </Sprite>
     );
   }
@@ -666,7 +678,7 @@ const findGrapplePoint = (player: Player, platforms: Crate[]): {x: number, y: nu
         <div className="absolute bottom-0 left-0 w-full h-12 bg-gray-800/50"></div>
 
         <div className="absolute top-2 left-2 text-white text-xl uppercase">Score: {score}</div>
-        <div className="absolute top-2 right-2 text-white text-xl uppercase">Level: {levelIndex + 1} / {levels.length}</div>
+        <div className="absolute top-2 right-2 text-white text-xl uppercase">Difficulty: {difficulty + 1}</div>
 
         <div className="absolute bottom-2 left-2 text-white flex items-center gap-4">
             <div>
