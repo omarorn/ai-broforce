@@ -434,15 +434,6 @@ const MenuScreen: React.FC<MenuScreenProps> = ({ onStartGame }) => {
         default:
           return (
             <div className="min-h-screen bg-gray-900 flex flex-col items-center justify-center p-4 relative z-10">
-              <div className="absolute top-4 right-4 flex gap-2">
-                  <button onClick={handleMuteToggle} className="p-2 rounded-full bg-black/20 hover:bg-black/40 text-white">
-                      {isMuted ? <IoVolumeMuteOutline size={24} /> : <IoVolumeHighOutline size={24} />}
-                  </button>
-                  <button onClick={handleToggleFullscreen} className="p-2 rounded-full bg-black/20 hover:bg-black/40 text-white">
-                      {isFullscreen ? <IoContractOutline size={24} /> : <IoExpandOutline size={24} />}
-                  </button>
-              </div>
-
               <div className="w-full max-w-4xl mx-auto text-center">
                 <h1 className="text-5xl md:text-6xl text-yellow-400 drop-shadow-[0_4px_0_#9A3412] mb-2">AI BROFORCE</h1>
                 <h2 className="text-xl md:text-2xl bg-gray-700 text-white inline-block px-4 py-1 mb-8">RECHARGED</h2>

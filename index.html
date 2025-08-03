@@ -27,6 +27,23 @@
       .flash-damage {
         animation: flash-damage 0.2s linear;
       }
+      @keyframes glow {
+        0% { box-shadow: 0 0 5px #fff; }
+        50% { box-shadow: 0 0 20px #fff; }
+        100% { box-shadow: 0 0 5px #fff; }
+      }
+      .glow {
+        animation: glow 1s infinite;
+      }
+      @keyframes wind-lines {
+        0% { background-position: 0 0; }
+        100% { background-position: 100% 0; }
+      }
+      .wind-lines {
+        animation: wind-lines 0.5s linear infinite;
+        background-image: linear-gradient(to right, rgba(255,255,255,0.5) 50%, transparent 50%);
+        background-size: 10px 2px;
+      }
     </style>
   <script type="importmap">
 {

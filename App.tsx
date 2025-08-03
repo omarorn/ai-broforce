@@ -1,15 +1,20 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import MenuScreen from './components/MenuScreen';
 import GameScreen from './components/GameScreen';
 import { GameState } from './types';
 import type { GeneratedCharacters, CharacterProfile } from './types';
 import Button from './components/ui/Button';
+import GradientMenu from './components/ui/gradient-menu';
 import { audioService } from './services/audioService';
+import { IoHomeOutline, IoVolumeHighOutline, IoVolumeMuteOutline, IoExpandOutline, IoContractOutline } from 'react-icons/io5';
+
 
 const App: React.FC = () => {
   const [gameState, setGameState] = useState<GameState>(GameState.MENU);
   const [characterData, setCharacterData] = useState<{characters: GeneratedCharacters, hero: CharacterProfile} | null>(null);
   const [finalScore, setFinalScore] = useState<number>(0);
+  const [isMuted, setIsMuted] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(!!document.fullscreenElement);
 
   const handleStartGame = useCallback((generatedCharacters: GeneratedCharacters, hero: CharacterProfile) => {
     setCharacterData({ characters: generatedCharacters, hero });
@@ -19,6 +24,7 @@ const App: React.FC = () => {
 
   const handleGameOver = useCallback((score: number) => {
     audioService.stopMusic();
+    audioService.playMusic('music_menu');
     setFinalScore(score);
     setGameState(GameState.GAME_OVER);
   }, []);
@@ -28,6 +34,37 @@ const App: React.FC = () => {
       setCharacterData(null);
       setGameState(GameState.MENU);
   }, []);
+
+  const handleMuteToggle = useCallback(() => {
+    const newMuteState = audioService.toggleMute();
+    setIsMuted(newMuteState);
+  }, []);
+
+  const handleToggleFullscreen = useCallback(() => {
+    if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(err => {
+            console.error(`Error attempting to enable full-screen mode: ${err.message} (${err.name})`);
+        });
+    } else {
+        if (document.exitFullscreen) {
+            document.exitFullscreen();
+        }
+    }
+  }, []);
+
+  useEffect(() => {
+    const fullscreenChangeHandler = () => {
+        setIsFullscreen(!!document.fullscreenElement);
+    };
+    document.addEventListener('fullscreenchange', fullscreenChangeHandler);
+    return () => document.removeEventListener('fullscreenchange', fullscreenChangeHandler);
+  }, []);
+
+  const menuItems = useMemo(() => [
+    { title: 'Home', icon: <IoHomeOutline />, gradientFrom: '#a955ff', gradientTo: '#ea51ff', onClick: handleRestart, disabled: gameState === GameState.MENU },
+    { title: isMuted ? 'Unmute' : 'Mute', icon: isMuted ? <IoVolumeMuteOutline /> : <IoVolumeHighOutline />, gradientFrom: '#56CCF2', gradientTo: '#2F80ED', onClick: handleMuteToggle },
+    { title: isFullscreen ? 'Exit Full' : 'Fullscreen', icon: isFullscreen ? <IoContractOutline /> : <IoExpandOutline />, gradientFrom: '#FFD700', gradientTo: '#FFA500', onClick: handleToggleFullscreen },
+  ], [gameState, isMuted, isFullscreen, handleRestart, handleMuteToggle, handleToggleFullscreen]);
 
   const renderContent = () => {
     switch (gameState) {
@@ -51,6 +88,9 @@ const App: React.FC = () => {
   return (
     <React.Fragment>
       {renderContent()}
+      <div className="fixed bottom-10 left-1/2 -translate-x-1/2 z-50">
+        <GradientMenu items={menuItems} />
+      </div>
     </React.Fragment>
   );
 };

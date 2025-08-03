@@ -4,14 +4,11 @@ This file tracks planned features and improvements for the "AI Broforce: Recharg
 
 ## Bugs
 - [x] Fix game freeze and annoying sound loop on startup.
-- [ ] Missing menu
-![alt text](image.png)
-## High Priority
 - [x] fix floating menu, no menu aivalable or settings
-- [ ] Implement advanced movement: `Grappling Hook`, `Flight`, and `Glide`.
-- [ ] Implement core movement abilities: `Double Jump`, `Air Dash`, `Wall Slide`, `Dig`, 
-- [ ] Add distinct sound effects for core movement abilities and explotions and shooting
-- [ ] Add more visual feedback for active special abilities (e.g., a glow for flight, wind lines for glide).
+- [x] Implement advanced movement: `Grappling Hook`, `Flight`, and `Glide`.
+- [x] Implement core movement abilities: `Double Jump`, `Air Dash`, `Wall Slide`, `Dig`, 
+- [x] Add distinct sound effects for core movement abilities and explotions and shooting
+- [x] Add more visual feedback for active special abilities (e.g., a glow for flight, wind lines for glide).
 
 ## Medium Priority
 - [ ] Create new enemy types with different behaviors (e.g., flying enemies, charging melee enemies).

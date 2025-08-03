@@ -176,13 +176,23 @@ const GameScreen: React.FC<GameScreenProps> = ({ characters, startingHero, onGam
     
     const allPlatforms = [...crates, {id: -1, type: 'crate' as const, x: 0, y: C.GAME_HEIGHT - 50, width: C.GAME_WIDTH, height: 50, health: 999}];
     
+    if (movementAbility.includes('dig') && (keysPressed.current['s'] || keysPressed.current['arrowdown']) && onGround) {
+        setPlayer(p => ({...p, isDigging: true}));
+    } else {
+        setPlayer(p => ({...p, isDigging: false}));
+    }
+
     // Horizontal collision
     let horizontalCollision = false;
     for(const platform of crates) {
         if(checkCollision({...player, x:newX}, platform)) {
-            newX = player.x;
-            horizontalCollision = true;
-            break;
+            if (player.isDigging && !staticPlatforms.includes(platform)) { // Allow digging through destructible crates
+                platform.health = 0; // Destroy the crate
+            } else {
+                newX = player.x;
+                horizontalCollision = true;
+                break;
+            }
         }
     }
     setPlayer(p => ({...p, x: Math.max(0, Math.min(C.GAME_WIDTH - C.PLAYER_WIDTH, newX))}));
@@ -247,14 +257,23 @@ const GameScreen: React.FC<GameScreenProps> = ({ characters, startingHero, onGam
             newYVelocity = -C.PLAYER_JUMP_FORCE;
             setPlayer(p => ({...p, hasDoubleJumped: true}));
             didJump = true;
+            audioService.playSound('double_jump');
         }
     }
     
     if (didJump) {
-        audioService.playSound('jump');
+        if (!movementAbility.includes('double')) audioService.playSound('jump');
         jumpBufferCounter.current = 0;
         coyoteTimeCounter.current = 0;
         setPlayer(p => ({...p, isWallSliding: false}));
+    }
+
+    if (isWallSliding) {
+        audioService.playSound('wall_slide');
+    }
+
+    if (player.isDigging) {
+        audioService.playSound('dig');
     }
 
     setPlayer(p => ({...p, y: newPlayerY}));
@@ -313,195 +332,58 @@ const GameScreen: React.FC<GameScreenProps> = ({ characters, startingHero, onGam
 
     // Grappling Hook
     if (movementAbility.includes('grappl') && keysPressed.current['q'] && !player.grapple) {
-        const grappleTarget = {x: player.x + (player.direction === 'right' ? 200 : -200), y: player.y - 150};
-        setPlayer(p => ({...p, grapple: { isGrappling: true, target: grappleTarget, length: 0}}));
+        const grappleTarget = findGrapplePoint(player, platforms);
+        if (grappleTarget) {
+            const dx = grappleTarget.x - (player.x + player.width / 2);
+            const dy = grappleTarget.y - (player.y + player.height / 2);
+            const length = Math.sqrt(dx * dx + dy * dy);
+            setPlayer(p => ({...p, grapple: { isGrappling: true, target: grappleTarget, length: length, angle: Math.atan2(dy, dx), speed: 0}}));
+        }
     }
 
-    if (player.grapple?.isGrappling) {
-        const dx = player.grapple.target.x - player.x;
-        const dy = player.grapple.target.y - player.y;
-        const distance = Math.sqrt(dx*dx + dy*dy);
-        const angle = Math.atan2(dy, dx);
+    if (player.grapple?.isGrappling && player.grapple.target) {
+        const grapple = player.grapple;
+        const target = grapple.target;
+        const dx = target.x - (player.x + player.width / 2);
+        const dy = target.y - (player.y + player.height / 2);
+        const currentLength = Math.sqrt(dx * dx + dy * dy);
 
-        if (distance > 20) {
-            newX += Math.cos(angle) * C.PLAYER_SPEED * 1.5;
-            newYVelocity = Math.sin(angle) * C.PLAYER_SPEED * 1.5;
-        } else {
+        const force = (currentLength - grapple.length) * 0.1;
+        grapple.speed += force / 10;
+        grapple.speed *= 0.99; // Damping
+        grapple.angle += grapple.speed;
+
+        const newPlayerX = target.x - Math.cos(grapple.angle) * grapple.length - player.width / 2;
+        const newPlayerY = target.y - Math.sin(grapple.angle) * grapple.length - player.height / 2;
+        
+        newX = newPlayerX;
+        newYVelocity = newPlayerY - player.y;
+
+        if (!keysPressed.current['q']) {
             setPlayer(p => ({...p, grapple: null}));
         }
+    } else if (player.grapple && !keysPressed.current['q']) {
+        setPlayer(p => ({...p, grapple: null}));
     }
+}, [player, yVelocity, bulletCooldown, bullets, enemies, crates, cages, score, levelIndex, characters, swapHero, onGameOver, screenShake.magnitude, isPaused]);
 
+const findGrapplePoint = (player: Player, platforms: Crate[]): {x: number, y: number} | null => {
+    const direction = player.direction === 'right' ? 1 : -1;
+    const startX = player.x + player.width / 2;
+    const startY = player.y + player.height / 2;
 
-    // --- ENEMY & TURRET AI ---
-    const allTargets = [player]; // Future: add other targets
-    const createEnemyBullet = (shooter: Enemy | Turret, target: Player) => {
-        const dirToPlayer = target.x > shooter.x ? 1 : -1;
-        audioService.playSound('shoot_rifle');
-        const ownerType = shooter.type === 'turret' ? 'turret' : 'enemy';
-        const weaponType = shooter.type === 'enemy' ? shooter.villain.weaponType : 'Rifle';
-        setBullets(b => [...b, { id: nextObjectId.current++, type: 'bullet', owner: ownerType, weaponType: weaponType,
-            x: shooter.x + (dirToPlayer === 1 ? shooter.width : -C.BULLET_WIDTH), y: shooter.y + shooter.height / 2, width: C.BULLET_WIDTH, height: C.BULLET_HEIGHT, vx: dirToPlayer * C.BULLET_SPEED * 0.8, vy: 0,
-        }]);
-    }
+    for (let i = 0; i < 20; i++) {
+        const checkX = startX + direction * i * 15;
+        const checkY = startY - i * 10;
 
-    setEnemies(es => es.map(enemy => {
-        const target = allTargets[0];
-        let newCooldown = enemy.shootCooldown - 1;
-        let newX = enemy.x;
-        if(enemy.isBoss) { // Boss follows player
-            const dir = target.x > enemy.x ? 1 : -1;
-            newX += dir * enemy.moveSpeed;
-            enemy.direction = dir === 1 ? 'right' : 'left';
-        }
-
-        if (newCooldown <= 0 && Math.abs(target.y - enemy.y) < 250 && Math.abs(target.x - enemy.x) < 600) {
-            createEnemyBullet(enemy, target);
-            newCooldown = 90 + Math.random() * 60;
-        }
-        return { ...enemy, x: newX, shootCooldown: newCooldown }
-    }));
-
-    setTurrets(ts => {
-        const updatedTurrets = ts.map(turret => {
-            let newCooldown = turret.shootCooldown - 1;
-            if (newCooldown <= 0 && enemies.length > 0) {
-                // Find nearest enemy
-                const nearestEnemy = enemies.reduce((closest, current) => {
-                    const closestDist = Math.abs(closest.x - turret.x);
-                    const currentDist = Math.abs(current.x - turret.x);
-                    return currentDist < closestDist ? current : closest;
-                }, enemies[0]);
-                
-                if (Math.abs(nearestEnemy.x - turret.x) < 500) {
-                     createEnemyBullet(turret, nearestEnemy as any); // hack to reuse bullet logic
-                     newCooldown = C.TURRET_SHOOT_COOLDOWN;
-                }
+        for (const platform of platforms) {
+            if (checkX > platform.x && checkX < platform.x + platform.width && checkY > platform.y && checkY < platform.y + platform.height) {
+                return { x: checkX, y: platform.y };
             }
-            return {...turret, life: turret.life -1, shootCooldown: newCooldown}
-        });
-        return updatedTurrets.filter(t => t.life > 0)
-    });
-
-    // --- BULLET MOVEMENT ---
-    setBullets(bs => bs.map(b => ({...b, x: b.x + b.vx, y: b.y + (b.weaponType.toLowerCase().includes('grenade') ? (b.vy += C.GRAVITY/1.5) : b.vy) }))
-        .filter(b => b.x > -100 && b.x < C.GAME_WIDTH + 100 && b.y < C.GAME_HEIGHT + 100));
-
-    // --- COLLISION DETECTION ---
-    let newScore = score;
-    const currentExplosions: Explosion[] = [];
-    let remainingBullets: Bullet[] = [];
-
-    for (const bullet of bullets) {
-        let hit = false;
-        
-        const checkHit = (target: Player | Enemy | Crate | RescueCage, damage: number): Player | Enemy | Crate | RescueCage => {
-            if (hit || !checkCollision(bullet, target)) {
-                return target;
-            }
-
-            // Player bullet hits enemy, crate, or cage
-            if (bullet.owner === 'player' && (target.type === 'enemy' || target.type === 'crate' || target.type === 'rescue_cage')) {
-                hit = true;
-                if (!bullet.weaponType.toLowerCase().includes('grenade')) {
-                    currentExplosions.push(createExplosion(bullet.x, bullet.y, 20, 20));
-                }
-                const newHealth = target.health - damage;
-
-                if (target.type === 'enemy') {
-                    if (newHealth <= 0) {
-                        newScore += target.isBoss ? 5000 : 100;
-                        audioService.playSound('explosion');
-                        triggerScreenShake(target.isBoss ? 15 : 5, 300);
-                        currentExplosions.push(createExplosion(target.x, target.y, target.width * 1.5, target.height * 1.5));
-                    }
-                    return { ...target, health: newHealth, damageFlash: 5 };
-                }
-                
-                if (target.type === 'rescue_cage') {
-                    if (newHealth <= 0) {
-                        audioService.playSound('rescue');
-                        setPlayer(p => ({ ...p, lives: p.lives + 1 }));
-                        swapHero();
-                    }
-                    return { ...target, health: newHealth };
-                }
-                
-                // This is for target.type === 'crate'
-                if(newHealth <= 0) {
-                    audioService.playSound('explosion');
-                    currentExplosions.push(createExplosion(target.x + target.width/2, target.y + target.height/2, target.width, target.height));
-                }
-                return { ...target, health: newHealth };
-            }
-
-            // Enemy bullet hits player
-            if ((bullet.owner === 'enemy' || bullet.owner === 'turret') && target.type === 'player' && !target.isInvincible) {
-                if (DEV_MODE_GOD_MODE) return target; // GOD MODE
-                hit = true;
-                audioService.playSound('hurt');
-                triggerScreenShake(3, 150);
-                return { ...target, health: target.health - damage, damageFlash: 5 };
-            }
-
-            return target;
-        };
-
-        // Check hits
-        setPlayer(p => checkHit(p, 10) as Player);
-        
-        const remainingEnemies: Enemy[] = [];
-        enemies.forEach(e => {
-            const newE = checkHit(e, 20) as Enemy;
-            if (newE.health > 0) remainingEnemies.push(newE);
-        });
-        setEnemies(remainingEnemies);
-
-        const remainingCrates: Crate[] = [];
-        crates.forEach(c => {
-            const newC = checkHit(c, 20) as Crate;
-            if(newC.health > 0) remainingCrates.push(newC);
-        });
-        setCrates(remainingCrates);
-
-        const remainingCages: RescueCage[] = [];
-        cages.forEach(c => {
-            const newC = checkHit(c, 20) as RescueCage;
-            if(newC.health > 0) remainingCages.push(newC);
-        });
-        setCages(remainingCages);
-
-        if (bullet.weaponType.toLowerCase().includes('grenade') && bullet.y >= C.GAME_HEIGHT - 50 - bullet.height) {
-            hit = true;
-            audioService.playSound('explosion');
-            triggerScreenShake(8, 200);
-            currentExplosions.push(createExplosion(bullet.x, bullet.y, 80, 80));
-        }
-
-        if (!hit) remainingBullets.push(bullet);
-    }
-    setBullets(remainingBullets);
-
-    setScore(newScore);
-    setExplosions(prev => [...prev, ...currentExplosions]);
-    setExplosions(ex => ex.map(e => ({...e, life: e.life - 1})).filter(e => e.life > 0));
-
-    // --- GAME STATE ---
-    if (player.health <= 0) {
-        if(player.lives > 0) {
-            setPlayer(p => createPlayer(p.hero, p.lives - 1));
-            swapHero();
-        } else {
-            onGameOver(score);
         }
     }
-    
-    // Level complete check
-    if (levelStartTime.current > 0 && Date.now() - levelStartTime.current > 1000 && enemies.length === 0 && prevEnemiesCount.current > 0 && explosions.length === 0) {
-        setLevelIndex(l => l + 1);
-        setPlayer(p => ({...p, health: Math.min(p.maxHealth, p.health + 25)}));
-    }
-    prevEnemiesCount.current = enemies.length;
-  }, [player, yVelocity, bulletCooldown, bullets, enemies, crates, cages, score, levelIndex, characters, swapHero, onGameOver, screenShake.magnitude, isPaused]);
+    return null;
+};
 
   useGameLoop(gameLoop);
 
@@ -541,8 +423,8 @@ const GameScreen: React.FC<GameScreenProps> = ({ characters, startingHero, onGam
     if(player.damageFlash > 0) classes += ' flash-damage';
     if(player.dashTimer > 0) classes += ' opacity-75';
     if(player.isWallSliding) classes += ' border-4 border-cyan-400';
-    if(player.isFlying) classes += ' shadow-2xl shadow-yellow-400';
-    if(player.isGliding) classes += ' opacity-80';
+    if(player.isFlying) classes += ' glow';
+    if(player.isGliding) classes += ' wind-lines';
 
     return (
         <Sprite entity={player} color={classes} >
@@ -571,8 +453,15 @@ const GameScreen: React.FC<GameScreenProps> = ({ characters, startingHero, onGam
         {isPaused && <PauseMenu />}
         
         {player.grapple?.isGrappling && player.grapple.target && (
-            <svg className="absolute inset-0 z-10" style={{pointerEvents: 'none'}}>
-                <line x1={player.x + player.width / 2} y1={player.y + player.height / 2} x2={player.grapple.target.x} y2={player.grapple.target.y} stroke="white" strokeWidth="2" />
+            <svg className="absolute top-0 left-0 w-full h-full" style={{ zIndex: 10, pointerEvents: 'none' }}>
+                <line 
+                    x1={player.x + player.width / 2} 
+                    y1={player.y + player.height / 2} 
+                    x2={player.grapple.target.x} 
+                    y2={player.grapple.target.y} 
+                    stroke="white" 
+                    strokeWidth="2" 
+                />
             </svg>
         )}
 

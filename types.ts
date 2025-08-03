@@ -53,10 +53,13 @@ export interface Player extends GameObject {
   dashTimer: number;
   isFlying: boolean;
   isGliding: boolean;
+  isDigging: boolean;
   grapple: {
       isGrappling: boolean;
       target: {x: number, y: number} | null;
       length: number;
+      angle: number;
+      speed: number;
   } | null;
 }
 
@@ -70,6 +73,7 @@ export interface Enemy extends GameObject {
   shootCooldown: number;
   isBoss: boolean;
   damageFlash: number;
+  behavior: 'fly' | 'charge' | 'shoot';
 }
 
 export interface Bullet extends GameObject {
